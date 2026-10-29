@@ -1,58 +1,99 @@
-<p align="center"><a href="https://laravel.com" target="_blank"><img src="https://raw.githubusercontent.com/laravel/art/master/logo-lockup/5%20SVG/2%20CMYK/1%20Full%20Color/laravel-logolockup-cmyk-red.svg" width="400" alt="Laravel Logo"></a></p>
+# AI Ticket Assistant (Laravel + free AI API)
 
-<p align="center">
-<a href="https://github.com/laravel/framework/actions"><img src="https://github.com/laravel/framework/workflows/tests/badge.svg" alt="Build Status"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/dt/laravel/framework" alt="Total Downloads"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/v/laravel/framework" alt="Latest Stable Version"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/l/laravel/framework" alt="License"></a>
-</p>
+A small Laravel project. A user submits a support ticket and the app calls an
+AI model to automatically return:
 
-## About Laravel
+- category (billing, technical, account, feature_request, other)
+- priority (low, medium, high, urgent)
+- one-line summary
+- a suggested reply to the customer
 
-Laravel is a web application framework with expressive, elegant syntax. We believe development must be an enjoyable and creative experience to be truly fulfilling. Laravel takes the pain out of development by easing common tasks used in many web projects, such as:
+It works with ANY OpenAI-compatible API, so you can use a completely free
+provider. No extra Composer package needed (uses Laravel's `Http` client).
 
-- [Simple, fast routing engine](https://laravel.com/docs/routing).
-- [Powerful dependency injection container](https://laravel.com/docs/container).
-- Multiple back-ends for [session](https://laravel.com/docs/session) and [cache](https://laravel.com/docs/cache) storage.
-- Expressive, intuitive [database ORM](https://laravel.com/docs/eloquent).
-- Database agnostic [schema migrations](https://laravel.com/docs/migrations).
-- [Robust background job processing](https://laravel.com/docs/queues).
-- [Real-time event broadcasting](https://laravel.com/docs/broadcasting).
+## 1. Setup
 
-Laravel is accessible, powerful, and provides tools required for large, robust applications.
+   composer create-project laravel/laravel ai-ticket-assistant
+   cd ai-ticket-assistant
 
-## Learning Laravel
+Copy the folders from this zip (`app`, `database`, `resources`, `routes`) into
+the project. Replace `routes/web.php` when asked.
 
-Laravel has the most extensive and thorough [documentation](https://laravel.com/docs) and video tutorial library of all modern web application frameworks, making it a breeze to get started with the framework.
+Add this inside the returned array in `config/services.php`:
 
-In addition, [Laracasts](https://laracasts.com) contains thousands of video tutorials on a range of topics including Laravel, modern PHP, unit testing, and JavaScript. Boost your skills by digging into our comprehensive video library.
+   'ai' => [
+       'base_url' => env('AI_BASE_URL'),
+       'key'      => env('AI_API_KEY'),
+       'model'    => env('AI_MODEL'),
+   ],
 
-You can also watch bite-sized lessons with real-world projects on [Laravel Learn](https://laravel.com/learn), where you will be guided through building a Laravel application from scratch while learning PHP fundamentals.
+## 2. Pick ONE free provider and put its values in `.env`
 
-## Agentic Development
+### Option A: Google Gemini (free tier, no credit card)
+Get a key at https://aistudio.google.com/apikey
 
-Laravel's predictable structure and conventions make it ideal for AI coding agents like Claude Code, Cursor, and GitHub Copilot. Install [Laravel Boost](https://laravel.com/docs/ai) to supercharge your AI workflow:
+   AI_BASE_URL=https://generativelanguage.googleapis.com/v1beta/openai
+   AI_API_KEY=your-gemini-key
+   AI_MODEL=gemini-3.8-flash
 
-```bash
-composer require laravel/boost --dev
+Free model names change over time. If you get a "model not found" error, open
+Google AI Studio and copy a current Flash model name.
 
-php artisan boost:install
-```
+### Option B: Groq (free tier, fast; may ask for phone verification)
+Get a key at https://console.groq.com/keys
 
-Boost provides your agent 15+ tools and skills that help agents build Laravel applications while following best practices.
+   AI_BASE_URL=https://api.groq.com/openai/v1
+   AI_API_KEY=your-groq-key
+   AI_MODEL=openai/gpt-oss-120b
 
-## Contributing
+### Option C: OpenRouter (free models ending in :free, small daily limit)
+Get a key at https://openrouter.ai/keys
 
-Thank you for considering contributing to the Laravel framework! The contribution guide can be found in the [Laravel documentation](https://laravel.com/docs/contributions).
+   AI_BASE_URL=https://openrouter.ai/api/v1
+   AI_API_KEY=your-openrouter-key
+   AI_MODEL=meta-llama/llama-3.3-70b-instruct:free
 
-## Code of Conduct
+### Option D: Ollama (100% free, runs on your own PC, no key, no internet)
+Install from https://ollama.com, then run: ollama pull llama3.2
 
-In order to ensure that the Laravel community is welcoming to all, please review and abide by the [Code of Conduct](https://laravel.com/docs/contributions#code-of-conduct).
+   AI_BASE_URL=http://localhost:11434/v1
+   AI_API_KEY=
+   AI_MODEL=llama3.2
 
-## Security Vulnerabilities
+(Needs a decent PC. Smaller models may sometimes return bad JSON; the app then
+marks the ticket "failed" and you can press "Re-run AI analysis".)
 
-If you discover a security vulnerability within Laravel, please send an e-mail to Taylor Otwell via [taylor@laravel.com](mailto:taylor@laravel.com). All security vulnerabilities will be promptly addressed.
+## 3. Run
 
-## License
+   php artisan migrate
+   php artisan serve
 
-The Laravel framework is open-sourced software licensed under the [MIT license](https://opensource.org/licenses/MIT).
+Open http://127.0.0.1:8000 and submit a ticket.
+
+## Files
+
+- `app/Services/AiService.php` : calls the API, parses and validates the JSON
+- `app/Http/Controllers/TicketController.php` : create, show, re-run analysis
+- `app/Models/Ticket.php` and the migration : tickets table
+- `resources/views/tickets/*` : simple Blade UI, no npm or build step needed
+
+## Good practices used
+
+- The API key stays in `.env` and is only used on the server.
+- Ticket text is wrapped in `<ticket>` tags and the system prompt says to treat
+  it as data. This helps against prompt injection.
+- The AI reply is validated (category and priority must be in the allowed list).
+- If the API fails, the ticket is still saved and marked `failed`; you can retry.
+- Provider is switchable from `.env` only (no vendor lock-in).
+
+## Free tier notes
+
+Free tiers have rate limits and can change. Do not put real customer data into
+a free tier for production use. Check the provider's terms.
+
+## Ideas to extend it (good for your portfolio)
+
+- Run the AI call in a Laravel Queue job instead of during the request.
+- Add login and roles with Sanctum or Breeze.
+- Add RAG: store FAQ documents and let the AI reply using them.
+- Write a feature test using `Http::fake()` to mock the API.
